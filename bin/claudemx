@@ -1,0 +1,197 @@
+#!/bin/zsh
+
+# claudemx - tmux 기반 Claude Code 멀티 에이전트 런처
+# 사용법:
+#   claudemx --agent N                      N개의 독립적인 claude 세션 생성
+#   claudemx --orchestration [--teammates N] Agent Teams 오케스트레이션 모드
+
+set -e
+
+# 기본값
+MODE="agent"
+AGENT_COUNT=2
+SESSION_NAME=""
+TEAMMATE_COUNT=""
+
+# 인자 파싱
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --agent|-a)
+      MODE="agent"
+      AGENT_COUNT="$2"
+      shift 2
+      ;;
+    --orchestration|-o)
+      MODE="orchestration"
+      shift
+      ;;
+    --teammates|-t)
+      TEAMMATE_COUNT="$2"
+      shift 2
+      ;;
+    --session|-s)
+      SESSION_NAME="$2"
+      shift 2
+      ;;
+    --help|-h)
+      echo "사용법: claudemx [옵션]"
+      echo ""
+      echo "모드:"
+      echo "  --agent, -a N            독립적인 claude 세션 N개 생성 (기본: 2, 최대: 9)"
+      echo "  --orchestration, -o      Agent Teams 오케스트레이션 모드"
+      echo ""
+      echo "옵션:"
+      echo "  --teammates, -t N        오케스트레이션 모드에서 teammate 수 힌트 (1~9)"
+      echo "  --session, -s NAME       tmux 세션 이름"
+      echo "                           기본: claude-agents (agent) / claude-orchestration (orchestration)"
+      echo "  --help, -h               도움말"
+      echo ""
+      echo "예시:"
+      echo "  claudemx --agent 4"
+      echo "  claudemx --orchestration"
+      echo "  claudemx --orchestration --teammates 3"
+      echo "  claudemx --orchestration --session my-project"
+      echo ""
+      echo "오케스트레이션 모드 조작:"
+      echo "  Shift+Down    teammate 패널 순환"
+      echo "  Ctrl+T        공유 task list 토글"
+      echo "  Ctrl+B 방향키  tmux 패널 이동"
+      exit 0
+      ;;
+    *)
+      echo "알 수 없는 옵션: $1"
+      echo "claudemx --help 로 사용법을 확인하세요."
+      exit 1
+      ;;
+  esac
+done
+
+# 세션 이름 기본값
+if [[ -z "$SESSION_NAME" ]]; then
+  if [[ "$MODE" == "orchestration" ]]; then
+    SESSION_NAME="claude-orchestration"
+  else
+    SESSION_NAME="claude-agents"
+  fi
+fi
+
+# 이미 존재하는 세션이면 attach
+if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+  echo "기존 세션 '$SESSION_NAME'에 연결합니다."
+  tmux attach -t "$SESSION_NAME"
+  exit 0
+fi
+
+# ─────────────────────────────────────────────
+# 오케스트레이션 모드
+# ─────────────────────────────────────────────
+if [[ "$MODE" == "orchestration" ]]; then
+  # Agent Teams 기능 확인
+  if ! claude --version &>/dev/null; then
+    echo "오류: claude 명령어를 찾을 수 없습니다."
+    exit 1
+  fi
+
+  # 리드 에이전트 세션 생성
+  tmux new-session -d -s "$SESSION_NAME"
+
+  if [[ -n "$TEAMMATE_COUNT" ]]; then
+    if [[ $TEAMMATE_COUNT -lt 1 || $TEAMMATE_COUNT -gt 9 ]]; then
+      echo "teammate 수는 1~9 사이여야 합니다."
+      tmux kill-session -t "$SESSION_NAME"
+      exit 1
+    fi
+  fi
+
+  tmux send-keys -t "$SESSION_NAME" "claude" Enter
+
+  # --teammates N 지정 시 claude 초기화 후 Agent Teams 자동 트리거
+  if [[ -n "$TEAMMATE_COUNT" ]]; then
+    # claude가 준비될 때까지 대기 (프롬프트 출력 감지)
+    local elapsed=0
+    while ! tmux capture-pane -t "$SESSION_NAME" -p 2>/dev/null | grep -q ">"; do
+      sleep 0.5
+      elapsed=$((elapsed + 1))
+      if [[ $elapsed -ge 20 ]]; then
+        break
+      fi
+    done
+    sleep 0.5
+    tmux send-keys -t "$SESSION_NAME" "create an agent team with ${TEAMMATE_COUNT} teammates" Enter
+  fi
+
+  echo ""
+  echo "┌─────────────────────────────────────────────────────┐"
+  echo "│  Claude Code Agent Teams 오케스트레이션 모드         │"
+  echo "│  세션: $SESSION_NAME"
+  echo "│                                                     │"
+  echo "│  teammate 수: ${TEAMMATE_COUNT:-자동 결정}                           │"
+  echo "│                                                     │"
+  echo "│  사용 예시:                                          │"
+  if [[ -n "$TEAMMATE_COUNT" ]]; then
+    echo "│  > $TEAMMATE_COUNT명의 teammate로 이 작업을 병렬로 처리해줘   │"
+  else
+    echo "│  > agent team을 만들어서 PR #42를 리뷰해줘          │"
+    echo "│  > 3명의 teammate로 이 기능을 병렬로 구현해줘       │"
+  fi
+  echo "│                                                     │"
+  echo "│  Shift+Down   teammate 패널 순환                    │"
+  echo "│  Ctrl+T       공유 task list 토글                   │"
+  echo "└─────────────────────────────────────────────────────┘"
+  echo ""
+
+  tmux attach -t "$SESSION_NAME"
+  exit 0
+fi
+
+# ─────────────────────────────────────────────
+# 에이전트 모드 (기존 --agent 동작)
+# ─────────────────────────────────────────────
+
+# 유효성 검사
+if [[ $AGENT_COUNT -lt 1 || $AGENT_COUNT -gt 9 ]]; then
+  echo "에이전트 수는 1~9 사이여야 합니다."
+  exit 1
+fi
+
+# 레이아웃 계산 (가로 x 세로)
+if [[ $AGENT_COUNT -eq 1 ]]; then
+  COLS=1; ROWS=1
+elif [[ $AGENT_COUNT -eq 2 ]]; then
+  COLS=2; ROWS=1
+elif [[ $AGENT_COUNT -le 4 ]]; then
+  COLS=2; ROWS=2
+elif [[ $AGENT_COUNT -le 6 ]]; then
+  COLS=3; ROWS=2
+else
+  COLS=3; ROWS=3
+fi
+
+# 세션 생성 (첫 번째 pane)
+tmux new-session -d -s "$SESSION_NAME"
+tmux send-keys -t "$SESSION_NAME" 'claude' Enter
+
+# 나머지 pane 생성
+for ((i=2; i<=AGENT_COUNT; i++)); do
+  if (( i <= COLS )); then
+    # 첫 번째 행: 수평 분할
+    tmux split-window -h -t "$SESSION_NAME"
+  else
+    # 다음 행: 대상 pane에서 수직 분할
+    TARGET_PANE=$(( i - COLS - 1 ))
+    tmux split-window -v -t "$SESSION_NAME.$TARGET_PANE"
+  fi
+  tmux send-keys 'claude' Enter
+done
+
+# 레이아웃 균등 정렬
+tmux select-layout -t "$SESSION_NAME" tiled
+
+# 첫 번째 pane 선택
+tmux select-pane -t "$SESSION_NAME.0"
+
+echo "Claude Code $AGENT_COUNT개 에이전트 시작 (세션: $SESSION_NAME)"
+echo "조작법: Ctrl+B 방향키로 pane 이동"
+
+# 세션에 연결
+tmux attach -t "$SESSION_NAME"
