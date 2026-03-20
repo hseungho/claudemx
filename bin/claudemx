@@ -10,6 +10,13 @@ set -e
 
 VERSION="v0.0.2"
 
+# 최신 릴리스 태그 조회
+get_latest_version() {
+  curl -fsSL --max-time 5 \
+    "https://api.github.com/repos/hseungho/claudemx/releases/latest" 2>/dev/null \
+    | grep -o '"tag_name": *"[^"]*"' | head -1 | cut -d'"' -f4
+}
+
 # 기본값
 MODE="agent"
 AGENT_COUNT=2
@@ -84,33 +91,37 @@ done
 # 업데이트 모드
 # ─────────────────────────────────────────────
 if [[ "$MODE" == "update" ]]; then
-  GITHUB_RAW="https://raw.githubusercontent.com/hseungho/claudemx/main"
   BIN_DIR="$HOME/.local/bin"
   COMPLETION_DIR="$HOME/.local/share/zsh/completions"
   TMPDIR_UPDATE=$(mktemp -d)
-
   trap "rm -rf $TMPDIR_UPDATE" EXIT
 
   echo "▶ claudemx 업데이트 확인 중..."
 
-  # 최신 파일 다운로드
-  if ! curl -fsSL "$GITHUB_RAW/bin/claudemx" -o "$TMPDIR_UPDATE/claudemx"; then
-    echo "오류: GitHub에서 최신 버전을 다운로드할 수 없습니다."
+  LATEST=$(get_latest_version)
+  if [[ -z "$LATEST" ]]; then
+    echo "오류: GitHub에서 최신 버전을 확인할 수 없습니다."
     exit 1
   fi
 
-  # 현재 버전과 비교
-  if diff -q "$BIN_DIR/claudemx" "$TMPDIR_UPDATE/claudemx" &>/dev/null; then
-    echo "  이미 최신 버전입니다."
+  if [[ "$VERSION" == "$LATEST" ]]; then
+    echo "  이미 최신 버전입니다. ($VERSION)"
     exit 0
   fi
 
-  # 스크립트 업데이트
+  echo "  새 버전: $VERSION → $LATEST"
+
+  GITHUB_RAW="https://raw.githubusercontent.com/hseungho/claudemx/$LATEST"
+
+  if ! curl -fsSL "$GITHUB_RAW/bin/claudemx" -o "$TMPDIR_UPDATE/claudemx"; then
+    echo "오류: 최신 버전을 다운로드할 수 없습니다."
+    exit 1
+  fi
+
   cp "$TMPDIR_UPDATE/claudemx" "$BIN_DIR/claudemx"
   chmod +x "$BIN_DIR/claudemx"
-  echo "  ✓ claudemx 업데이트 완료"
+  echo "  ✓ claudemx $LATEST 업데이트 완료"
 
-  # 자동완성 업데이트
   if curl -fsSL "$GITHUB_RAW/bin/_claudemx" -o "$TMPDIR_UPDATE/_claudemx" 2>/dev/null; then
     mkdir -p "$COMPLETION_DIR"
     cp "$TMPDIR_UPDATE/_claudemx" "$COMPLETION_DIR/_claudemx"
