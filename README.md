@@ -35,6 +35,77 @@ cd claudemx
 claude   # AI 위저드가 환경 점검 및 설치를 대화로 안내
 ```
 
+## 설치
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hseungho/claudemx/main/macos/scripts/install-claudemx.sh | bash
+```
+
+또는 수동으로:
+
+```bash
+mkdir -p ~/.local/bin
+curl -fsSL https://raw.githubusercontent.com/hseungho/claudemx/v0.0.3/bin/claudemx -o ~/.local/bin/claudemx
+chmod +x ~/.local/bin/claudemx
+```
+
+> `~/.local/bin`이 `$PATH`에 포함되어 있어야 합니다.
+
+## 업데이트
+
+```bash
+claudemx --update
+```
+
+새 버전 확인만 하려면:
+
+```bash
+claudemx --check-update
+```
+
+> `--update`는 v0.0.2에서 추가되었습니다. v0.0.1 사용자는 위 설치 명령으로 재설치하세요.
+
+## 사용법
+
+```bash
+claudemx [옵션]
+```
+
+### 모드
+
+| 옵션 | 설명 |
+|------|------|
+| `--agent, -a N` | 독립적인 Claude 세션 N개 생성 (기본: 2, 최대: 9) |
+| `--orchestration, -o` | Agent Teams 오케스트레이션 모드 |
+
+### 옵션
+
+| 옵션 | 설명 |
+|------|------|
+| `--teammates, -t N` | 오케스트레이션 모드에서 teammate 수 힌트 (1~9) |
+| `--session, -s NAME` | tmux 세션 이름 지정 |
+| `--version, -v` | 버전 출력 |
+| `--update, -u` | GitHub Release에서 최신 버전으로 업데이트 |
+| `--check-update` | 새 버전 확인만 (업데이트하지 않음) |
+| `--help, -h` | 도움말 |
+
+### 예시
+
+```bash
+claudemx --agent 4                          # 4개 독립 에이전트
+claudemx --orchestration                    # Agent Teams 모드
+claudemx --orchestration --teammates 3      # teammate 3개로 시작
+claudemx --orchestration --session my-proj  # 세션 이름 지정
+```
+
+### 오케스트레이션 모드 조작
+
+| 키 | 동작 |
+|----|------|
+| `Shift+Down` | teammate 패널 순환 |
+| `Ctrl+T` | 공유 task list 토글 |
+| `Ctrl+B 방향키` | tmux 패널 이동 |
+
 ## 가이드
 
 | 언어 | 링크 |
