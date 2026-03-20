@@ -7,6 +7,7 @@ _claudemx() {
   _arguments -C \
     '(--agent -a)'{--agent,-a}'[독립적인 claude 세션 N개 생성]:에이전트 수:(1 2 3 4 5 6 7 8 9)' \
     '(--orchestration -o)'{--orchestration,-o}'[Agent Teams 오케스트레이션 모드]' \
+    '(--update -u)'{--update,-u}'[GitHub에서 최신 버전으로 업데이트]' \
     '(--teammates -t)'{--teammates,-t}'[오케스트레이션 teammate 수]:teammate 수:(1 2 3 4 5 6 7 8 9)' \
     '(--session -s)'{--session,-s}'[tmux 세션 이름]:세션 이름:_claudemx_sessions' \
     '(--help -h)'{--help,-h}'[도움말 표시]'

@@ -4,6 +4,7 @@
 # 사용법:
 #   claudemx --agent N                      N개의 독립적인 claude 세션 생성
 #   claudemx --orchestration [--teammates N] Agent Teams 오케스트레이션 모드
+#   claudemx --update                       GitHub에서 최신 버전으로 업데이트
 
 set -e
 
@@ -33,6 +34,10 @@ while [[ $# -gt 0 ]]; do
       SESSION_NAME="$2"
       shift 2
       ;;
+    --update|-u)
+      MODE="update"
+      shift
+      ;;
     --help|-h)
       echo "사용법: claudemx [옵션]"
       echo ""
@@ -44,6 +49,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --teammates, -t N        오케스트레이션 모드에서 teammate 수 힌트 (1~9)"
       echo "  --session, -s NAME       tmux 세션 이름"
       echo "                           기본: claude-agents (agent) / claude-orchestration (orchestration)"
+      echo "  --update, -u             GitHub에서 최신 버전으로 업데이트"
       echo "  --help, -h               도움말"
       echo ""
       echo "예시:"
@@ -51,6 +57,7 @@ while [[ $# -gt 0 ]]; do
       echo "  claudemx --orchestration"
       echo "  claudemx --orchestration --teammates 3"
       echo "  claudemx --orchestration --session my-project"
+      echo "  claudemx --update"
       echo ""
       echo "오케스트레이션 모드 조작:"
       echo "  Shift+Down    teammate 패널 순환"
@@ -65,6 +72,48 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# ─────────────────────────────────────────────
+# 업데이트 모드
+# ─────────────────────────────────────────────
+if [[ "$MODE" == "update" ]]; then
+  GITHUB_RAW="https://raw.githubusercontent.com/hseungho/claudemx/main"
+  BIN_DIR="$HOME/.local/bin"
+  COMPLETION_DIR="$HOME/.local/share/zsh/completions"
+  TMPDIR_UPDATE=$(mktemp -d)
+
+  trap "rm -rf $TMPDIR_UPDATE" EXIT
+
+  echo "▶ claudemx 업데이트 확인 중..."
+
+  # 최신 파일 다운로드
+  if ! curl -fsSL "$GITHUB_RAW/bin/claudemx" -o "$TMPDIR_UPDATE/claudemx"; then
+    echo "오류: GitHub에서 최신 버전을 다운로드할 수 없습니다."
+    exit 1
+  fi
+
+  # 현재 버전과 비교
+  if diff -q "$BIN_DIR/claudemx" "$TMPDIR_UPDATE/claudemx" &>/dev/null; then
+    echo "  이미 최신 버전입니다."
+    exit 0
+  fi
+
+  # 스크립트 업데이트
+  cp "$TMPDIR_UPDATE/claudemx" "$BIN_DIR/claudemx"
+  chmod +x "$BIN_DIR/claudemx"
+  echo "  ✓ claudemx 업데이트 완료"
+
+  # 자동완성 업데이트
+  if curl -fsSL "$GITHUB_RAW/bin/_claudemx" -o "$TMPDIR_UPDATE/_claudemx" 2>/dev/null; then
+    mkdir -p "$COMPLETION_DIR"
+    cp "$TMPDIR_UPDATE/_claudemx" "$COMPLETION_DIR/_claudemx"
+    echo "  ✓ zsh 자동완성 업데이트 완료"
+  fi
+
+  echo ""
+  echo "  업데이트가 적용되었습니다."
+  exit 0
+fi
 
 # 세션 이름 기본값
 if [[ -z "$SESSION_NAME" ]]; then
@@ -86,57 +135,73 @@ fi
 # 오케스트레이션 모드
 # ─────────────────────────────────────────────
 if [[ "$MODE" == "orchestration" ]]; then
-  # Agent Teams 기능 확인
+  # Claude Code 설치 확인
   if ! claude --version &>/dev/null; then
     echo "오류: claude 명령어를 찾을 수 없습니다."
     exit 1
   fi
 
-  # 리드 에이전트 세션 생성
-  tmux new-session -d -s "$SESSION_NAME"
+  # Agent Teams 환경변수 확인
+  SETTINGS_FILE="$HOME/.claude/settings.json"
+  AGENT_TEAMS_ENABLED=false
+  if [[ -n "${CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS:-}" ]]; then
+    AGENT_TEAMS_ENABLED=true
+  elif [[ -f "$SETTINGS_FILE" ]] && grep -q '"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"' "$SETTINGS_FILE" 2>/dev/null; then
+    AGENT_TEAMS_ENABLED=true
+  fi
 
+  if [[ "$AGENT_TEAMS_ENABLED" == "false" ]]; then
+    echo "오류: Agent Teams가 활성화되어 있지 않습니다."
+    echo ""
+    echo "다음 중 하나로 활성화하세요:"
+    echo "  1) claude settings set env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS 1"
+    echo "  2) ~/.claude/settings.json 에 직접 추가:"
+    echo '     { "env": { "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1" } }'
+    exit 1
+  fi
+
+  # teammate 수 유효성 검사
   if [[ -n "$TEAMMATE_COUNT" ]]; then
     if [[ $TEAMMATE_COUNT -lt 1 || $TEAMMATE_COUNT -gt 9 ]]; then
       echo "teammate 수는 1~9 사이여야 합니다."
-      tmux kill-session -t "$SESSION_NAME"
       exit 1
     fi
   fi
 
+  # 리드 에이전트 세션 생성
+  tmux new-session -d -s "$SESSION_NAME"
   tmux send-keys -t "$SESSION_NAME" "claude" Enter
 
-  # --teammates N 지정 시 claude 초기화 후 Agent Teams 자동 트리거
-  if [[ -n "$TEAMMATE_COUNT" ]]; then
-    # claude가 준비될 때까지 대기 (프롬프트 출력 감지)
-    local elapsed=0
-    while ! tmux capture-pane -t "$SESSION_NAME" -p 2>/dev/null | grep -q ">"; do
-      sleep 0.5
-      elapsed=$((elapsed + 1))
-      if [[ $elapsed -ge 20 ]]; then
-        break
-      fi
-    done
+  # claude 준비 대기 (pane에 출력이 충분히 나올 때까지)
+  ELAPSED=0
+  while [[ $ELAPSED -lt 30 ]]; do
     sleep 0.5
-    tmux send-keys -t "$SESSION_NAME" "create an agent team with ${TEAMMATE_COUNT} teammates" Enter
+    ELAPSED=$((ELAPSED + 1))
+    LINE_COUNT=$(tmux capture-pane -t "$SESSION_NAME" -p 2>/dev/null | grep -c '.' || true)
+    if [[ $LINE_COUNT -ge 3 ]]; then
+      break
+    fi
+  done
+  sleep 1
+
+  # Agent Teams 프롬프트 자동 전송
+  if [[ -n "$TEAMMATE_COUNT" ]]; then
+    TEAM_PROMPT="create an agent team with ${TEAMMATE_COUNT} teammates to work on this project"
+  else
+    TEAM_PROMPT="create an agent team to help with tasks in this project"
   fi
+  tmux send-keys -t "$SESSION_NAME" "$TEAM_PROMPT" Enter
 
   echo ""
   echo "┌─────────────────────────────────────────────────────┐"
   echo "│  Claude Code Agent Teams 오케스트레이션 모드         │"
   echo "│  세션: $SESSION_NAME"
   echo "│                                                     │"
-  echo "│  teammate 수: ${TEAMMATE_COUNT:-자동 결정}                           │"
-  echo "│                                                     │"
-  echo "│  사용 예시:                                          │"
-  if [[ -n "$TEAMMATE_COUNT" ]]; then
-    echo "│  > $TEAMMATE_COUNT명의 teammate로 이 작업을 병렬로 처리해줘   │"
-  else
-    echo "│  > agent team을 만들어서 PR #42를 리뷰해줘          │"
-    echo "│  > 3명의 teammate로 이 기능을 병렬로 구현해줘       │"
-  fi
+  echo "│  teammate 수: ${TEAMMATE_COUNT:-자동 결정}"
   echo "│                                                     │"
   echo "│  Shift+Down   teammate 패널 순환                    │"
   echo "│  Ctrl+T       공유 task list 토글                   │"
+  echo "│  Ctrl+B 방향키  tmux 패널 이동                      │"
   echo "└─────────────────────────────────────────────────────┘"
   echo ""
 
