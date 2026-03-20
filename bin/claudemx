@@ -29,7 +29,7 @@ background_update_check() {
 
 # 기본값
 MODE="agent"
-AGENT_COUNT=2
+AGENT_COUNT=1
 SESSION_NAME=""
 TEAMMATE_COUNT=""
 
