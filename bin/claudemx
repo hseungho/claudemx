@@ -51,6 +51,10 @@ while [[ $# -gt 0 ]]; do
       MODE="update"
       shift
       ;;
+    --check-update)
+      MODE="check-update"
+      shift
+      ;;
     --help|-h)
       echo "사용법: claudemx [옵션]"
       echo ""
@@ -64,6 +68,7 @@ while [[ $# -gt 0 ]]; do
       echo "                           기본: claude-agents (agent) / claude-orchestration (orchestration)"
       echo "  --version, -v            버전 출력"
       echo "  --update, -u             GitHub에서 최신 버전으로 업데이트"
+      echo "  --check-update           새 버전 확인만 (업데이트하지 않음)"
       echo "  --help, -h               도움말"
       echo ""
       echo "예시:"
@@ -86,6 +91,21 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+if [[ "$MODE" == "check-update" ]]; then
+  LATEST=$(get_latest_version)
+  if [[ -z "$LATEST" ]]; then
+    echo "오류: GitHub에서 최신 버전을 확인할 수 없습니다."
+    exit 1
+  fi
+
+  if [[ "$VERSION" == "$LATEST" ]]; then
+    echo "이미 최신 버전입니다. ($VERSION)"
+  else
+    echo "새 버전 ${LATEST}이 있습니다. claudemx --update로 업데이트하세요"
+  fi
+  exit 0
+fi
 
 # ─────────────────────────────────────────────
 # 업데이트 모드
