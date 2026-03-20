@@ -17,6 +17,16 @@ get_latest_version() {
     | grep -o '"tag_name": *"[^"]*"' | head -1 | cut -d'"' -f4
 }
 
+# 백그라운드 업데이트 체크
+background_update_check() {
+  local tmpfile="$1"
+  local latest
+  latest=$(get_latest_version)
+  if [[ -n "$latest" && "$latest" != "$VERSION" ]]; then
+    echo "$latest" > "$tmpfile"
+  fi
+}
+
 # 기본값
 MODE="agent"
 AGENT_COUNT=2
@@ -162,6 +172,11 @@ if [[ -z "$SESSION_NAME" ]]; then
   fi
 fi
 
+# 백그라운드 업데이트 체크 시작
+UPDATE_CHECK_TMP=$(mktemp /tmp/claudemx-update-check.XXXXXX)
+background_update_check "$UPDATE_CHECK_TMP" &
+UPDATE_CHECK_PID=$!
+
 # 이미 존재하는 세션이면 attach
 if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
   echo "기존 세션 '$SESSION_NAME'에 연결합니다."
@@ -243,6 +258,17 @@ if [[ "$MODE" == "orchestration" ]]; then
   echo "└─────────────────────────────────────────────────────┘"
   echo ""
 
+  # 백그라운드 업데이트 체크 결과 확인
+  if [[ -n "${UPDATE_CHECK_PID:-}" ]]; then
+    wait "$UPDATE_CHECK_PID" 2>/dev/null || true
+    if [[ -s "$UPDATE_CHECK_TMP" ]]; then
+      LATEST_VER=$(cat "$UPDATE_CHECK_TMP")
+      echo "새 버전 ${LATEST_VER}이 있습니다. claudemx --update로 업데이트하세요"
+      echo ""
+    fi
+    rm -f "$UPDATE_CHECK_TMP"
+  fi
+
   tmux attach -t "$SESSION_NAME"
   exit 0
 fi
@@ -295,6 +321,17 @@ tmux select-pane -t "$SESSION_NAME.0"
 
 echo "Claude Code $AGENT_COUNT개 에이전트 시작 (세션: $SESSION_NAME)"
 echo "조작법: Ctrl+B 방향키로 pane 이동"
+
+# 백그라운드 업데이트 체크 결과 확인
+if [[ -n "${UPDATE_CHECK_PID:-}" ]]; then
+  wait "$UPDATE_CHECK_PID" 2>/dev/null || true
+  if [[ -s "$UPDATE_CHECK_TMP" ]]; then
+    LATEST_VER=$(cat "$UPDATE_CHECK_TMP")
+    echo "새 버전 ${LATEST_VER}이 있습니다. claudemx --update로 업데이트하세요"
+    echo ""
+  fi
+  rm -f "$UPDATE_CHECK_TMP"
+fi
 
 # 세션에 연결
 tmux attach -t "$SESSION_NAME"
