@@ -32,6 +32,8 @@ MODE="agent"
 AGENT_COUNT=1
 SESSION_NAME=""
 TEAMMATE_COUNT=""
+FORCE_NEW=false
+ATTACH_SESSION=""
 
 # 인자 파싱
 while [[ $# -gt 0 ]]; do
@@ -50,8 +52,12 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --session|-s)
-      SESSION_NAME="$2"
+      ATTACH_SESSION="$2"
       shift 2
+      ;;
+    --new|-n)
+      FORCE_NEW=true
+      shift
       ;;
     --version|-v)
       echo "claudemx $VERSION"
@@ -74,8 +80,8 @@ while [[ $# -gt 0 ]]; do
       echo ""
       echo "옵션:"
       echo "  --teammates, -t N        오케스트레이션 모드에서 teammate 수 힌트 (1~9)"
-      echo "  --session, -s NAME       tmux 세션 이름"
-      echo "                           기본: claude-agents (agent) / claude-orchestration (orchestration)"
+      echo "  --session, -s NAME       기존 tmux 세션에 연결"
+      echo "  --new, -n                새 세션 강제 생성 (--session과 함께 사용 시)"
       echo "  --version, -v            버전 출력"
       echo "  --update, -u             GitHub에서 최신 버전으로 업데이트"
       echo "  --check-update           새 버전 확인만 (업데이트하지 않음)"
@@ -163,8 +169,26 @@ if [[ "$MODE" == "update" ]]; then
   exit 0
 fi
 
-# 세션 이름 기본값
-if [[ -z "$SESSION_NAME" ]]; then
+# --session: 기존 세션에 연결
+if [[ -n "$ATTACH_SESSION" && "$FORCE_NEW" == "false" ]]; then
+  if tmux has-session -t "$ATTACH_SESSION" 2>/dev/null; then
+    echo "기존 세션 '$ATTACH_SESSION'에 연결합니다."
+    tmux attach -t "$ATTACH_SESSION"
+    exit 0
+  else
+    echo "오류: 세션 '$ATTACH_SESSION'을(를) 찾을 수 없습니다."
+    echo ""
+    echo "사용 가능한 세션:"
+    tmux list-sessions -F '  #{session_name}' 2>/dev/null || echo "  (없음)"
+    exit 1
+  fi
+fi
+
+# 세션 이름 결정
+if [[ -n "$ATTACH_SESSION" ]]; then
+  # --session + --new: 지정된 이름으로 새 세션 생성
+  SESSION_NAME="$ATTACH_SESSION"
+else
   if [[ "$MODE" == "orchestration" ]]; then
     SESSION_NAME="claude-orchestration"
   else
@@ -172,17 +196,18 @@ if [[ -z "$SESSION_NAME" ]]; then
   fi
 fi
 
+# 이름 충돌 시 suffix 추가 (-2, -3, ...)
+BASE_NAME="$SESSION_NAME"
+SUFFIX=1
+while tmux has-session -t "$SESSION_NAME" 2>/dev/null; do
+  SUFFIX=$((SUFFIX + 1))
+  SESSION_NAME="${BASE_NAME}-${SUFFIX}"
+done
+
 # 백그라운드 업데이트 체크 시작
 UPDATE_CHECK_TMP=$(mktemp /tmp/claudemx-update-check.XXXXXX)
 background_update_check "$UPDATE_CHECK_TMP" &
 UPDATE_CHECK_PID=$!
-
-# 이미 존재하는 세션이면 attach
-if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
-  echo "기존 세션 '$SESSION_NAME'에 연결합니다."
-  tmux attach -t "$SESSION_NAME"
-  exit 0
-fi
 
 # ─────────────────────────────────────────────
 # 오케스트레이션 모드

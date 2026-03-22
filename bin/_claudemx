@@ -11,7 +11,8 @@ _claudemx() {
     '(--update -u)'{--update,-u}'[GitHub에서 최신 버전으로 업데이트]' \
     '--check-update[새 버전 확인만]' \
     '(--teammates -t)'{--teammates,-t}'[오케스트레이션 teammate 수]:teammate 수:(1 2 3 4 5 6 7 8 9)' \
-    '(--session -s)'{--session,-s}'[tmux 세션 이름]:세션 이름:_claudemx_sessions' \
+    '(--session -s)'{--session,-s}'[기존 tmux 세션에 연결]:세션 이름:_claudemx_sessions' \
+    '(--new -n)'{--new,-n}'[새 세션 강제 생성]' \
     '(--help -h)'{--help,-h}'[도움말 표시]'
 }
 
