@@ -379,7 +379,9 @@ if [[ "$MODE" == "update" ]]; then
 
   echo ""
   echo "  업데이트가 적용되었습니다."
-  echo "  자동완성 반영: rm -f ~/.zcompdump* && exec zsh"
+  RELOAD_CMD="rm -rf ~/.zcompdump* && exec zsh"
+  echo "$RELOAD_CMD" | pbcopy 2>/dev/null
+  echo "  자동완성 반영: $RELOAD_CMD (클립보드에 복사됨, 붙여넣기하세요)"
   exit 0
 fi
 
