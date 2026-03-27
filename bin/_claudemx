@@ -13,6 +13,10 @@ _claudemx() {
     '(--teammates -t)'{--teammates,-t}'[오케스트레이션 teammate 수]:teammate 수:(1 2 3 4 5 6 7 8 9)' \
     '(--session -s)'{--session,-s}'[기존 tmux 세션에 연결]:세션 이름:_claudemx_sessions' \
     '(--new -n)'{--new,-n}'[새 세션 강제 생성]' \
+    '(--list -l)'{--list,-l}'[실행 중인 claudemx 세션 목록]' \
+    '(--kill -k)'{--kill,-k}'[지정한 claudemx 세션 종료]:*:세션 이름:_claudemx_managed_sessions' \
+    '--prune[모든 claudemx 세션 종료]' \
+    '-f[--prune 시 확인 없이 즉시 종료]' \
     '(--help -h)'{--help,-h}'[도움말 표시]'
 }
 
@@ -22,6 +26,20 @@ _claudemx_sessions() {
   sessions=(${(f)"$(tmux list-sessions -F '#{session_name}' 2>/dev/null)"})
   if [[ ${#sessions} -gt 0 ]]; then
     _describe '기존 tmux 세션' sessions
+  fi
+}
+
+# claudemx가 관리하는 세션만 자동완성
+_claudemx_managed_sessions() {
+  local sessions=()
+  local session_name
+  for session_name in ${(f)"$(tmux list-sessions -F '#{session_name}' 2>/dev/null)"}; do
+    local cmx_env
+    cmx_env=$(tmux show-environment -t "$session_name" CLAUDEMX 2>/dev/null) || continue
+    [[ "$cmx_env" == "CLAUDEMX=true" ]] && sessions+=("$session_name")
+  done
+  if [[ ${#sessions} -gt 0 ]]; then
+    _describe 'claudemx 세션' sessions
   fi
 }
 
