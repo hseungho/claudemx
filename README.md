@@ -54,48 +54,72 @@ chmod +x ~/.local/bin/claudemx
 ## 업데이트
 
 ```bash
-claudemx --update
+claudemx update
 ```
 
 새 버전 확인만 하려면:
 
 ```bash
-claudemx --check-update
+claudemx check-update
 ```
 
-> `--update`는 v0.0.2에서 추가되었습니다. v0.0.1 사용자는 위 설치 명령으로 재설치하세요.
+> `update`는 v0.0.2에서 추가되었습니다. v0.0.1 사용자는 위 설치 명령으로 재설치하세요.
 
 ## 사용법
 
 ```bash
-claudemx [옵션]
+claudemx <커맨드> [옵션]
 ```
 
-### 모드
+### 커맨드
 
-| 옵션 | 설명 |
-|------|------|
-| `--agent, -a N` | 독립적인 Claude 세션 N개 생성 (기본: 2, 최대: 9) |
-| `--orchestration, -o` | Agent Teams 오케스트레이션 모드 |
+| 커맨드 | 플래그 | 설명 |
+|--------|--------|------|
+| `agent N` | `--agent, -a N` | 독립적인 Claude 세션 N개 생성 (기본: 1, 최대: 9) |
+| `orchestration` | `--orchestration, -o` | Agent Teams 오케스트레이션 모드 |
+| `run NAME` | `--session NAME --new` | 이름을 지정하여 새 세션 생성 |
+| `attach NAME` | `--session, -s NAME` | 기존 세션에 연결 |
+| `list` | `--list, -l` | 실행 중인 claudemx 세션 목록 표시 |
+| `kill NAME [NAME...]` | `--kill, -k NAME...` | 지정한 claudemx 세션 종료 |
+| `prune` | `--prune` | 모든 claudemx 세션 종료 (확인 프롬프트) |
+| `update` | `--update, -u` | GitHub에서 최신 버전으로 업데이트 |
+| `check-update` | `--check-update` | 새 버전 확인만 |
+| `version` | `--version, -v` | 버전 출력 |
+| `help` | `--help, -h` | 도움말 |
+
+> 커맨드와 플래그 방식 모두 동일하게 동작합니다.
 
 ### 옵션
 
 | 옵션 | 설명 |
 |------|------|
 | `--teammates, -t N` | 오케스트레이션 모드에서 teammate 수 힌트 (1~9) |
-| `--session, -s NAME` | tmux 세션 이름 지정 |
-| `--version, -v` | 버전 출력 |
-| `--update, -u` | GitHub Release에서 최신 버전으로 업데이트 |
-| `--check-update` | 새 버전 확인만 (업데이트하지 않음) |
-| `--help, -h` | 도움말 |
+| `-f` | `prune` 시 확인 없이 즉시 종료 |
 
 ### 예시
 
 ```bash
-claudemx --agent 4                          # 4개 독립 에이전트
-claudemx --orchestration                    # Agent Teams 모드
-claudemx --orchestration --teammates 3      # teammate 3개로 시작
-claudemx --orchestration --session my-proj  # 세션 이름 지정
+# 세션 생성
+claudemx agent 4                          # 4개 독립 에이전트
+claudemx orchestration                    # Agent Teams 모드
+claudemx orchestration --teammates 3      # teammate 3개로 시작
+claudemx run my-project                   # 이름 지정하여 새 세션
+claudemx run my-project orchestration     # 이름 + 오케스트레이션 모드
+
+# 세션 관리
+claudemx list                             # 실행 중인 세션 목록
+claudemx attach my-project                # 기존 세션 연결
+claudemx kill session1 session2           # 지정 세션 종료
+claudemx prune                            # 전체 종료 (확인 프롬프트)
+claudemx prune -f                         # 전체 즉시 종료
+```
+
+### 세션 목록 (`claudemx list`)
+
+```
+SESSION              MODE               TEAMMATES    UPTIME     DIRECTORY
+my-refactor          orchestration      3            47m        ~/project-a
+api-work             agent(2)           -            1h 2m      ~/project-b
 ```
 
 ### 오케스트레이션 모드 조작
