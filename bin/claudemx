@@ -49,6 +49,7 @@ AGENT_COUNT=1
 SESSION_NAME=""
 TEAMMATE_COUNT=""
 FORCE_NEW=false
+FORCE=false
 ATTACH_SESSION=""
 KILL_SESSIONS=()
 
@@ -101,6 +102,14 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       ;;
+    --prune)
+      MODE="prune"
+      shift
+      ;;
+    -f)
+      FORCE=true
+      shift
+      ;;
     --check-update)
       MODE="check-update"
       shift
@@ -116,6 +125,8 @@ while [[ $# -gt 0 ]]; do
       echo "  --teammates, -t N        오케스트레이션 모드에서 teammate 수 힌트 (1~9)"
       echo "  --list, -l               실행 중인 claudemx 세션 목록 표시"
       echo "  --kill, -k NAME...       지정한 claudemx 세션 종료"
+      echo "  --prune                  모든 claudemx 세션 종료 (확인 프롬프트)"
+      echo "  -f                       --prune 시 확인 없이 즉시 종료"
       echo "  --session, -s NAME       기존 tmux 세션에 연결"
       echo "  --new, -n                새 세션 강제 생성 (--session과 함께 사용 시)"
       echo "  --version, -v            버전 출력"
@@ -206,6 +217,41 @@ if [[ "$MODE" == "kill" ]]; then
     tmux kill-session -t "$session_name"
     echo "세션 '${session_name}' 종료됨"
   done
+  exit 0
+fi
+
+if [[ "$MODE" == "prune" ]]; then
+  # claudemx 세션 수집
+  PRUNE_SESSIONS=()
+  while IFS= read -r session_name; do
+    [[ -z "$session_name" ]] && continue
+    local cmx_env
+    cmx_env=$(tmux show-environment -t "$session_name" CLAUDEMX 2>/dev/null) || continue
+    [[ "$cmx_env" == "CLAUDEMX=true" ]] || continue
+    PRUNE_SESSIONS+=("$session_name")
+  done < <(tmux list-sessions -F '#{session_name}' 2>/dev/null)
+
+  local count=${#PRUNE_SESSIONS[@]}
+
+  if [[ $count -eq 0 ]]; then
+    echo "종료할 세션이 없습니다"
+    exit 0
+  fi
+
+  # 확인 프롬프트 (-f가 아닐 때)
+  if [[ "$FORCE" == "false" ]]; then
+    printf "%d개 세션을 모두 종료하시겠습니까? (y/N) " "$count"
+    read -r answer
+    if [[ "$answer" != "y" && "$answer" != "Y" ]]; then
+      echo "취소됨"
+      exit 0
+    fi
+  fi
+
+  for session_name in "${PRUNE_SESSIONS[@]}"; do
+    tmux kill-session -t "$session_name"
+  done
+  echo "${count}개 세션 종료됨"
   exit 0
 fi
 
