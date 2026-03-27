@@ -4,6 +4,9 @@
 # 사용법:
 #   claudemx --agent N                      N개의 독립적인 claude 세션 생성
 #   claudemx --orchestration [--teammates N] Agent Teams 오케스트레이션 모드
+#   claudemx --list                         실행 중인 claudemx 세션 목록 표시
+#   claudemx --kill NAME [NAME...]          지정한 claudemx 세션 종료
+#   claudemx --prune [-f]                   모든 claudemx 세션 종료
 #   claudemx --update                       GitHub에서 최신 버전으로 업데이트
 
 set -e
