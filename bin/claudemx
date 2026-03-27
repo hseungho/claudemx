@@ -27,6 +27,22 @@ background_update_check() {
   fi
 }
 
+# 초를 사람이 읽을 수 있는 형식으로 변환
+format_uptime() {
+  local seconds=$1
+  local days=$((seconds / 86400))
+  local hours=$(( (seconds % 86400) / 3600 ))
+  local minutes=$(( (seconds % 3600) / 60 ))
+
+  if [[ $days -gt 0 ]]; then
+    echo "${days}d ${hours}h"
+  elif [[ $hours -gt 0 ]]; then
+    echo "${hours}h ${minutes}m"
+  else
+    echo "${minutes}m"
+  fi
+}
+
 # 기본값
 MODE="agent"
 AGENT_COUNT=1
@@ -67,6 +83,10 @@ while [[ $# -gt 0 ]]; do
       MODE="update"
       shift
       ;;
+    --list|-l)
+      MODE="list"
+      shift
+      ;;
     --check-update)
       MODE="check-update"
       shift
@@ -80,6 +100,7 @@ while [[ $# -gt 0 ]]; do
       echo ""
       echo "옵션:"
       echo "  --teammates, -t N        오케스트레이션 모드에서 teammate 수 힌트 (1~9)"
+      echo "  --list, -l               실행 중인 claudemx 세션 목록 표시"
       echo "  --session, -s NAME       기존 tmux 세션에 연결"
       echo "  --new, -n                새 세션 강제 생성 (--session과 함께 사용 시)"
       echo "  --version, -v            버전 출력"
@@ -107,6 +128,49 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+if [[ "$MODE" == "list" ]]; then
+  printf "%-20s %-18s %-12s %-10s %s\n" "SESSION" "MODE" "TEAMMATES" "UPTIME" "DIRECTORY"
+
+  tmux list-sessions -F '#{session_name} #{session_created}' 2>/dev/null | while read -r session_name session_created; do
+    # claudemx 세션인지 확인
+    local cmx_env
+    cmx_env=$(tmux show-environment -t "$session_name" CLAUDEMX 2>/dev/null) || continue
+    [[ "$cmx_env" == "CLAUDEMX=true" ]] || continue
+
+    # 모드 확인
+    local mode_env mode_display teammates
+    mode_env=$(tmux show-environment -t "$session_name" CLAUDEMX_MODE 2>/dev/null)
+    local mode_value="${mode_env#CLAUDEMX_MODE=}"
+
+    # pane 수 조회
+    local pane_count
+    pane_count=$(tmux list-panes -t "$session_name" 2>/dev/null | wc -l | tr -d ' ')
+
+    if [[ "$mode_value" == "orchestration" ]]; then
+      mode_display="orchestration"
+      teammates=$((pane_count - 1))
+    else
+      mode_display="agent(${pane_count})"
+      teammates="-"
+    fi
+
+    # uptime 계산
+    local now uptime_seconds uptime_display
+    now=$(date +%s)
+    uptime_seconds=$((now - session_created))
+    uptime_display=$(format_uptime "$uptime_seconds")
+
+    # 작업 디렉토리 (첫 번째 pane 기준)
+    local directory
+    directory=$(tmux display-message -t "$session_name:0.0" -p '#{pane_current_path}' 2>/dev/null)
+    directory="${directory/#$HOME/~}"
+
+    printf "%-20s %-18s %-12s %-10s %s\n" "$session_name" "$mode_display" "$teammates" "$uptime_display" "$directory"
+  done
+
+  exit 0
+fi
 
 if [[ "$MODE" == "check-update" ]]; then
   LATEST=$(get_latest_version)
