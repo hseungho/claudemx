@@ -311,7 +311,7 @@ if [[ "$MODE" == "update" ]]; then
 
   echo ""
   echo "  업데이트가 적용되었습니다."
-  echo "  자동완성 반영: exec zsh"
+  echo "  자동완성 반영: rm -f ~/.zcompdump* && exec zsh"
   exit 0
 fi
 
