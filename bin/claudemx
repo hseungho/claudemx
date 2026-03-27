@@ -248,6 +248,11 @@ if [[ "$MODE" == "orchestration" ]]; then
 
   # 리드 에이전트 세션 생성
   tmux new-session -d -s "$SESSION_NAME"
+
+  # claudemx 세션 식별용 환경변수 설정
+  tmux set-environment -t "$SESSION_NAME" CLAUDEMX "true"
+  tmux set-environment -t "$SESSION_NAME" CLAUDEMX_MODE "orchestration"
+
   tmux send-keys -t "$SESSION_NAME" "claude" Enter
 
   # claude 준비 대기 (pane에 출력이 충분히 나올 때까지)
@@ -323,6 +328,11 @@ fi
 
 # 세션 생성 (첫 번째 pane)
 tmux new-session -d -s "$SESSION_NAME"
+
+# claudemx 세션 식별용 환경변수 설정
+tmux set-environment -t "$SESSION_NAME" CLAUDEMX "true"
+tmux set-environment -t "$SESSION_NAME" CLAUDEMX_MODE "agent"
+
 tmux send-keys -t "$SESSION_NAME" 'claude' Enter
 
 # 나머지 pane 생성
