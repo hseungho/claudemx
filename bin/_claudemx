@@ -5,6 +5,8 @@ _claudemx() {
   typeset -A opt_args
 
   _arguments -C \
+    '1:커맨드:_claudemx_commands' \
+    '*::인자:->args' \
     '(--agent -a)'{--agent,-a}'[독립적인 claude 세션 N개 생성]:에이전트 수:(1 2 3 4 5 6 7 8 9)' \
     '(--orchestration -o)'{--orchestration,-o}'[Agent Teams 오케스트레이션 모드]' \
     '(--version -v)'{--version,-v}'[버전 출력]' \
@@ -16,8 +18,54 @@ _claudemx() {
     '(--list -l)'{--list,-l}'[실행 중인 claudemx 세션 목록]' \
     '(--kill -k)'{--kill,-k}'[지정한 claudemx 세션 종료]:*:세션 이름:_claudemx_managed_sessions' \
     '--prune[모든 claudemx 세션 종료]' \
-    '-f[--prune 시 확인 없이 즉시 종료]' \
+    '-f[prune 시 확인 없이 즉시 종료]' \
     '(--help -h)'{--help,-h}'[도움말 표시]'
+
+  case $state in
+    args)
+      case ${line[1]} in
+        agent)
+          _arguments '1:에이전트 수:(1 2 3 4 5 6 7 8 9)' \
+            '(--teammates -t)'{--teammates,-t}'[teammate 수]:teammate 수:(1 2 3 4 5 6 7 8 9)'
+          ;;
+        orchestration)
+          _arguments \
+            '(--teammates -t)'{--teammates,-t}'[teammate 수]:teammate 수:(1 2 3 4 5 6 7 8 9)'
+          ;;
+        run)
+          _arguments '1:세션 이름:_claudemx_sessions' \
+            '(--teammates -t)'{--teammates,-t}'[teammate 수]:teammate 수:(1 2 3 4 5 6 7 8 9)'
+          ;;
+        attach)
+          _arguments '1:세션 이름:_claudemx_sessions'
+          ;;
+        kill)
+          _arguments '*:세션 이름:_claudemx_managed_sessions'
+          ;;
+        prune)
+          _arguments '-f[확인 없이 즉시 종료]'
+          ;;
+      esac
+      ;;
+  esac
+}
+
+# 서브커맨드 목록
+_claudemx_commands() {
+  local commands=(
+    'agent:독립적인 claude 세션 N개 생성'
+    'orchestration:Agent Teams 오케스트레이션 모드'
+    'run:이름을 지정하여 새 세션 생성'
+    'attach:기존 세션에 연결'
+    'list:실행 중인 claudemx 세션 목록'
+    'kill:지정한 claudemx 세션 종료'
+    'prune:모든 claudemx 세션 종료'
+    'update:GitHub에서 최신 버전으로 업데이트'
+    'check-update:새 버전 확인만'
+    'version:버전 출력'
+    'help:도움말'
+  )
+  _describe '커맨드' commands
 }
 
 # 기존 tmux 세션 목록 자동완성
@@ -25,7 +73,7 @@ _claudemx_sessions() {
   local sessions
   sessions=(${(f)"$(tmux list-sessions -F '#{session_name}' 2>/dev/null)"})
   if [[ ${#sessions} -gt 0 ]]; then
-    _describe '기존 tmux 세션' sessions
+    _describe '세션' sessions
   fi
 }
 

@@ -2,12 +2,14 @@
 
 # claudemx - tmux 기반 Claude Code 멀티 에이전트 런처
 # 사용법:
-#   claudemx --agent N                      N개의 독립적인 claude 세션 생성
-#   claudemx --orchestration [--teammates N] Agent Teams 오케스트레이션 모드
-#   claudemx --list                         실행 중인 claudemx 세션 목록 표시
-#   claudemx --kill NAME [NAME...]          지정한 claudemx 세션 종료
-#   claudemx --prune [-f]                   모든 claudemx 세션 종료
-#   claudemx --update                       GitHub에서 최신 버전으로 업데이트
+#   claudemx agent N                        N개의 독립적인 claude 세션 생성
+#   claudemx orchestration [--teammates N]   Agent Teams 오케스트레이션 모드
+#   claudemx run NAME                       이름을 지정하여 새 세션 생성
+#   claudemx attach NAME                    기존 세션에 연결
+#   claudemx list                           실행 중인 claudemx 세션 목록 표시
+#   claudemx kill NAME [NAME...]            지정한 claudemx 세션 종료
+#   claudemx prune [-f]                     모든 claudemx 세션 종료
+#   claudemx update                         GitHub에서 최신 버전으로 업데이트
 
 set -e
 
@@ -113,36 +115,40 @@ while [[ $# -gt 0 ]]; do
       FORCE=true
       shift
       ;;
-    --check-update)
+    --check-update|check-update)
       MODE="check-update"
       shift
       ;;
-    --help|-h)
-      echo "사용법: claudemx [옵션]"
+    --help|-h|help)
+      echo "사용법: claudemx <커맨드> [옵션]"
       echo ""
-      echo "모드:"
-      echo "  --agent, -a N            독립적인 claude 세션 N개 생성 (기본: 2, 최대: 9)"
-      echo "  --orchestration, -o      Agent Teams 오케스트레이션 모드"
+      echo "커맨드:"
+      echo "  agent N                  독립적인 claude 세션 N개 생성 (기본: 1, 최대: 9)"
+      echo "  orchestration            Agent Teams 오케스트레이션 모드"
+      echo "  run NAME                 이름을 지정하여 새 세션 생성"
+      echo "  attach NAME              기존 세션에 연결"
+      echo "  list                     실행 중인 claudemx 세션 목록 표시"
+      echo "  kill NAME [NAME...]      지정한 claudemx 세션 종료"
+      echo "  prune                    모든 claudemx 세션 종료 (확인 프롬프트)"
+      echo "  update                   GitHub에서 최신 버전으로 업데이트"
+      echo "  check-update             새 버전 확인만 (업데이트하지 않음)"
+      echo "  version                  버전 출력"
+      echo "  help                     도움말"
       echo ""
       echo "옵션:"
       echo "  --teammates, -t N        오케스트레이션 모드에서 teammate 수 힌트 (1~9)"
-      echo "  --list, -l               실행 중인 claudemx 세션 목록 표시"
-      echo "  --kill, -k NAME...       지정한 claudemx 세션 종료"
-      echo "  --prune                  모든 claudemx 세션 종료 (확인 프롬프트)"
-      echo "  -f                       --prune 시 확인 없이 즉시 종료"
-      echo "  --session, -s NAME       기존 tmux 세션에 연결"
-      echo "  --new, -n                새 세션 강제 생성 (--session과 함께 사용 시)"
-      echo "  --version, -v            버전 출력"
-      echo "  --update, -u             GitHub에서 최신 버전으로 업데이트"
-      echo "  --check-update           새 버전 확인만 (업데이트하지 않음)"
-      echo "  --help, -h               도움말"
+      echo "  -f                       prune 시 확인 없이 즉시 종료"
       echo ""
       echo "예시:"
-      echo "  claudemx --agent 4"
-      echo "  claudemx --orchestration"
-      echo "  claudemx --orchestration --teammates 3"
-      echo "  claudemx --orchestration --session my-project"
-      echo "  claudemx --update"
+      echo "  claudemx agent 4"
+      echo "  claudemx orchestration --teammates 3"
+      echo "  claudemx run my-project"
+      echo "  claudemx run my-project orchestration --teammates 3"
+      echo "  claudemx attach my-project"
+      echo "  claudemx list"
+      echo "  claudemx kill session1 session2"
+      echo "  claudemx prune -f"
+      echo "  claudemx update"
       echo ""
       echo "오케스트레이션 모드 조작:"
       echo "  Shift+Down    teammate 패널 순환"
@@ -150,9 +156,71 @@ while [[ $# -gt 0 ]]; do
       echo "  Ctrl+B 방향키  tmux 패널 이동"
       exit 0
       ;;
+    # 서브커맨드 (--flag 없이)
+    agent)
+      MODE="agent"
+      if [[ -n "$2" && ! "$2" == -* ]]; then
+        AGENT_COUNT="$2"
+        shift 2
+      else
+        shift
+      fi
+      ;;
+    orchestration)
+      MODE="orchestration"
+      shift
+      ;;
+    run)
+      FORCE_NEW=true
+      if [[ -n "$2" && ! "$2" == -* ]]; then
+        ATTACH_SESSION="$2"
+        shift 2
+      else
+        echo "사용법: claudemx run <세션이름> [옵션]"
+        exit 1
+      fi
+      ;;
+    attach)
+      if [[ -n "$2" && ! "$2" == -* ]]; then
+        ATTACH_SESSION="$2"
+        shift 2
+      else
+        echo "사용법: claudemx attach <세션이름>"
+        exit 1
+      fi
+      ;;
+    list)
+      MODE="list"
+      shift
+      ;;
+    kill)
+      MODE="kill"
+      shift
+      KILL_SESSIONS=()
+      while [[ $# -gt 0 && ! "$1" == -* ]]; do
+        KILL_SESSIONS+=("$1")
+        shift
+      done
+      if [[ ${#KILL_SESSIONS[@]} -eq 0 ]]; then
+        echo "사용법: claudemx kill <세션이름> [세션이름...]"
+        exit 1
+      fi
+      ;;
+    prune)
+      MODE="prune"
+      shift
+      ;;
+    update)
+      MODE="update"
+      shift
+      ;;
+    version)
+      echo "claudemx $VERSION"
+      exit 0
+      ;;
     *)
       echo "알 수 없는 옵션: $1"
-      echo "claudemx --help 로 사용법을 확인하세요."
+      echo "claudemx help 로 사용법을 확인하세요."
       exit 1
       ;;
   esac
