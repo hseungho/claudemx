@@ -50,6 +50,7 @@ SESSION_NAME=""
 TEAMMATE_COUNT=""
 FORCE_NEW=false
 ATTACH_SESSION=""
+KILL_SESSIONS=()
 
 # 인자 파싱
 while [[ $# -gt 0 ]]; do
@@ -87,6 +88,19 @@ while [[ $# -gt 0 ]]; do
       MODE="list"
       shift
       ;;
+    --kill|-k)
+      MODE="kill"
+      shift
+      KILL_SESSIONS=()
+      while [[ $# -gt 0 && ! "$1" == --* ]]; do
+        KILL_SESSIONS+=("$1")
+        shift
+      done
+      if [[ ${#KILL_SESSIONS[@]} -eq 0 ]]; then
+        echo "사용법: claudemx --kill <세션이름> [세션이름...]"
+        exit 1
+      fi
+      ;;
     --check-update)
       MODE="check-update"
       shift
@@ -101,6 +115,7 @@ while [[ $# -gt 0 ]]; do
       echo "옵션:"
       echo "  --teammates, -t N        오케스트레이션 모드에서 teammate 수 힌트 (1~9)"
       echo "  --list, -l               실행 중인 claudemx 세션 목록 표시"
+      echo "  --kill, -k NAME...       지정한 claudemx 세션 종료"
       echo "  --session, -s NAME       기존 tmux 세션에 연결"
       echo "  --new, -n                새 세션 강제 생성 (--session과 함께 사용 시)"
       echo "  --version, -v            버전 출력"
@@ -169,6 +184,28 @@ if [[ "$MODE" == "list" ]]; then
     printf "%-20s %-18s %-12s %-10s %s\n" "$session_name" "$mode_display" "$teammates" "$uptime_display" "$directory"
   done
 
+  exit 0
+fi
+
+if [[ "$MODE" == "kill" ]]; then
+  for session_name in "${KILL_SESSIONS[@]}"; do
+    # 세션 존재 확인
+    if ! tmux has-session -t "$session_name" 2>/dev/null; then
+      echo "세션 '${session_name}'을(를) 찾을 수 없습니다"
+      continue
+    fi
+
+    # claudemx 세션인지 확인
+    local cmx_env
+    cmx_env=$(tmux show-environment -t "$session_name" CLAUDEMX 2>/dev/null) || true
+    if [[ "$cmx_env" != "CLAUDEMX=true" ]]; then
+      echo "세션 '${session_name}'은(는) claudemx 세션이 아닙니다"
+      continue
+    fi
+
+    tmux kill-session -t "$session_name"
+    echo "세션 '${session_name}' 종료됨"
+  done
   exit 0
 fi
 
