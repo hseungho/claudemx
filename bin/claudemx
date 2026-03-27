@@ -96,7 +96,7 @@ while [[ $# -gt 0 ]]; do
       MODE="kill"
       shift
       KILL_SESSIONS=()
-      while [[ $# -gt 0 && ! "$1" == --* ]]; do
+      while [[ $# -gt 0 && ! "$1" == -* ]]; do
         KILL_SESSIONS+=("$1")
         shift
       done
@@ -161,19 +161,18 @@ done
 if [[ "$MODE" == "list" ]]; then
   printf "%-20s %-18s %-12s %-10s %s\n" "SESSION" "MODE" "TEAMMATES" "UPTIME" "DIRECTORY"
 
-  tmux list-sessions -F '#{session_name} #{session_created}' 2>/dev/null | while read -r session_name session_created; do
+  while read -r session_name session_created; do
+    [[ -z "$session_name" ]] && continue
+
     # claudemx 세션인지 확인
-    local cmx_env
     cmx_env=$(tmux show-environment -t "$session_name" CLAUDEMX 2>/dev/null) || continue
     [[ "$cmx_env" == "CLAUDEMX=true" ]] || continue
 
     # 모드 확인
-    local mode_env mode_display teammates
     mode_env=$(tmux show-environment -t "$session_name" CLAUDEMX_MODE 2>/dev/null)
-    local mode_value="${mode_env#CLAUDEMX_MODE=}"
+    mode_value="${mode_env#CLAUDEMX_MODE=}"
 
     # pane 수 조회
-    local pane_count
     pane_count=$(tmux list-panes -t "$session_name" 2>/dev/null | wc -l | tr -d ' ')
 
     if [[ "$mode_value" == "orchestration" ]]; then
@@ -185,18 +184,16 @@ if [[ "$MODE" == "list" ]]; then
     fi
 
     # uptime 계산
-    local now uptime_seconds uptime_display
     now=$(date +%s)
     uptime_seconds=$((now - session_created))
     uptime_display=$(format_uptime "$uptime_seconds")
 
     # 작업 디렉토리 (첫 번째 pane 기준)
-    local directory
     directory=$(tmux display-message -t "$session_name:0.0" -p '#{pane_current_path}' 2>/dev/null)
     directory="${directory/#$HOME/~}"
 
     printf "%-20s %-18s %-12s %-10s %s\n" "$session_name" "$mode_display" "$teammates" "$uptime_display" "$directory"
-  done
+  done < <(tmux list-sessions -F '#{session_name} #{session_created}' 2>/dev/null)
 
   exit 0
 fi
@@ -210,7 +207,6 @@ if [[ "$MODE" == "kill" ]]; then
     fi
 
     # claudemx 세션인지 확인
-    local cmx_env
     cmx_env=$(tmux show-environment -t "$session_name" CLAUDEMX 2>/dev/null) || true
     if [[ "$cmx_env" != "CLAUDEMX=true" ]]; then
       echo "세션 '${session_name}'은(는) claudemx 세션이 아닙니다"
@@ -228,13 +224,12 @@ if [[ "$MODE" == "prune" ]]; then
   PRUNE_SESSIONS=()
   while IFS= read -r session_name; do
     [[ -z "$session_name" ]] && continue
-    local cmx_env
     cmx_env=$(tmux show-environment -t "$session_name" CLAUDEMX 2>/dev/null) || continue
     [[ "$cmx_env" == "CLAUDEMX=true" ]] || continue
     PRUNE_SESSIONS+=("$session_name")
   done < <(tmux list-sessions -F '#{session_name}' 2>/dev/null)
 
-  local count=${#PRUNE_SESSIONS[@]}
+  count=${#PRUNE_SESSIONS[@]}
 
   if [[ $count -eq 0 ]]; then
     echo "종료할 세션이 없습니다"
